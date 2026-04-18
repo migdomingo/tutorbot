@@ -1,0 +1,36 @@
+{
+  "name": "tutorbot",
+  "version": "1.0.0",
+  "description": "Chatbot integrated with discord acting as a scaffold tutor for cooperative and collaborative students activities",
+  "keywords": [
+    "discord",
+    "chatbot",
+    "scaffold",
+    "learning"
+  ],
+  "homepage": "https://github.com/migdomingo/tutorbot#readme",
+  "bugs": {
+    "url": "https://github.com/migdomingo/tutorbot/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/migdomingo/tutorbot.git"
+  },
+  "license": "Apache-2.0",
+  "author": "Miguel Ángel Domingo",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "analysis": "node analysis.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.25.1",
+    "dotenv": "^17.2.3",
+    "openai": "^6.15.0",
+    "sqlite": "^5.1.1",
+    "sqlite3": "^5.1.7"
+  }
+  
+   
+}
