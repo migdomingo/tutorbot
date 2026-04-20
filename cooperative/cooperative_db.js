@@ -109,6 +109,17 @@ const dbInitialize = async () => {
             overall_assessment TEXT
         )
     `);
+
+    // NEW: Track bot suggestions to avoid repetition
+    await dbRun(`
+        CREATE TABLE IF NOT EXISTS bot_suggestions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id TEXT,
+            role TEXT,
+            suggestion_text TEXT,
+            timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
 };
 
 const clearChannelData = async (channelId) => {
@@ -146,6 +157,18 @@ const getRoles = async(channelId) =>  {
     return await dbAll(`SELECT username, role_name FROM team_roles WHERE channel_id = ?`, [channelId]);
 };
 
+const getRecentSuggestions = async (channelId, role, limit = 3) => {
+    return await dbAll(`SELECT suggestion_text FROM bot_suggestions 
+                       WHERE channel_id = ? AND role = ? 
+                       ORDER BY timestamp DESC LIMIT ?`, 
+                       [channelId, role, limit]);
+};
+
+const recordSuggestion = async (channelId, role, suggestionText) => {
+    await dbRun(`INSERT INTO bot_suggestions (channel_id, role, suggestion_text) VALUES (?, ?, ?)`, 
+                [channelId, role, suggestionText]);
+};
+
 module.exports = {
     dbInitialize,
     clearChannelData,
@@ -155,5 +178,9 @@ module.exports = {
     insertParticipationLog,
     insertHelpRequest,
     getRoles, 
-    insertBotIntervention
+    insertBotIntervention,
+    dbRun,
+    dbAll,
+    getRecentSuggestions,
+    recordSuggestion
 }
