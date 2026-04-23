@@ -1,5 +1,5 @@
 /**
- * Scenario Configuration: Cooperative Project-Based Learning
+ * Scenario Configuration: Collaborative Project-Based Learning
  *
  * Centralized pedagogical configuration for the facilitator bot.
  * All configurable parameters are defined here.
@@ -16,7 +16,7 @@ module.exports = {
   /**
    * Scenario Metadata
    */
-  name: "cooperative_project_basic",
+  name: "collaborative_project_basic",
   educationalLevel: "4th_ESO",
   taskType: "project",
 
@@ -106,7 +106,7 @@ module.exports = {
   },
 
   /**
-   * Cooperative Roles Definition
+   * Collaborative Roles Definition
    */
   roles: [
     {

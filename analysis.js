@@ -1,5 +1,5 @@
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./cooperative_learning.sqlite');
+const db = new sqlite3.Database('./collaborative/collaborative_learning.sqlite');
 
 console.log("=== 📊 TFM DATA ANALYSIS REPORT ===\n");
 
@@ -246,7 +246,7 @@ db.serialize(() => {
                                 console.log(`   ${latest.regulation_summary}`);
                                 console.log(``);
 
-                                console.log(`🤝 FUNCIONAMIENTO COOPERATIVO:`);
+                                console.log(`🤝 FUNCIONAMIENTO COLABORATIVO:`);
                                 console.log(`   ${latest.collaboration_summary}`);
                                 console.log(``);
 

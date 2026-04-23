@@ -1,7 +1,7 @@
 {
   "name": "tutorbot",
   "version": "1.0.0",
-  "description": "Chatbot integrated with discord acting as a scaffold tutor for cooperative and collaborative students activities",
+  "description": "Chatbot integrated with discord acting as a scaffold tutor for cooperative / collaborative and collaborative students activities",
   "keywords": [
     "discord",
     "chatbot",

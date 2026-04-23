@@ -1,5 +1,5 @@
 /**
- * Help Command Handler - Facilitador Cooperativo
+ * Help Command Handler - Facilitador colaborativo
  * Módulo independiente para el comando !ayuda
  * Implementa andamiaje metacognitivo con estrategias de desbloqueo y variación
  */
@@ -10,8 +10,9 @@ const {
     insertHelpRequest, 
     insertBotIntervention, 
     getRecentSuggestions, 
-    recordSuggestion 
-} = require('./cooperative_db.js');
+    recordSuggestion,
+    getRecentMessagesWithRoleMentions
+} = require('./collaborative_db.js');
 const scenarioConfig = require('../scenarios/scenario_project.js');
 
 /**
@@ -53,29 +54,117 @@ async function getVariedSuggestionsForRole(role, stage, channelId) {
 }
 
 /**
- * Main handler for !ayuda command
- */
-async function handleHelpCommand(message, openai) {
-    console.log(`[AYUDA] Comando recibido de ${message.author.username} (${message.author.id}) en canal ${message.channelId}. Contenido: "${message.content}"`);
+  * Verifica activación flexible para contexto presencial
+  * Condiciones: multi_participant_chat | functional_trace | teacher_override
+  */
+async function checkFlexibleActivation(message) {
+    const recentMsgs = await message.channel.messages.fetch({ limit: 20 });
+    const nonBotMsgs = recentMsgs.filter(m => !m.author.bot);
+    const nonBotAuthors = new Set(nonBotMsgs.map(m => m.author.id));
+    
+    // A) Multi-participante: ≥3 autores distintos
+    if (nonBotAuthors.size >= 3) {
+        return {
+            activationReason: 'multi_participant_chat',
+            participantsDetected: nonBotAuthors.size,
+            rolesDetected: [],
+            messageCount: nonBotMsgs.size
+        };
+    }
+    
+    // B) Traza funcional: secretario + otro rol
+    // Verificar en participación log si existen mensajes de roles distintos
+    const roles = await getRoles(message.channelId);
+    const roleUserIds = {};
+    roles.forEach(r => {
+        roleUserIds[r.user_id] = r.role_name;
+    });
+    
+    const secretaryId = roles.find(r => r.role_name.includes('Secretar'))?.user_id;
+    const nonSecretaryRoleIds = roles.filter(r => !r.role_name.includes('Secretar')).map(r => r.user_id);
+    
+    // Contar mensajes de participantes con roles
+    const msgAuthors = nonBotMsgs.map(m => m.author.id);
+    const hasSecretaryMsg = secretaryId && msgAuthors.includes(secretaryId);
+    const hasOtherRoleMsg = nonSecretaryRoleIds.some(id => id && msgAuthors.includes(id));
+    
+    if (hasSecretaryMsg && hasOtherRoleMsg) {
+        const rolesDetected = roles.map(r => {
+            if (r.user_id === secretaryId) return 'secretary';
+            if (r.role_name.includes('Coordinad')) return 'coordinator';
+            if (r.role_name.includes('Portavoz') || r.role_name.includes('Crítico')) return 'critic';
+            return 'unknown';
+        }).filter(r => r !== 'unknown');
+        
+        return {
+            activationReason: 'functional_trace',
+            participantsDetected: nonBotAuthors.size,
+            rolesDetected: rolesDetected,
+            messageCount: nonBotMsgs.size
+        };
+    }
+    
+    // No se cumple ninguna condición
+    return {
+        activationReason: null,
+        participantsDetected: nonBotAuthors.size,
+        rolesDetected: [],
+        messageCount: nonBotMsgs.size
+    };
+}
 
-    // Metadatos de la petición
+/**
+  * Main handler for !ayuda command
+  */
+async function handleHelpCommand(message, openai, forceOverride = false) {
+    console.log(`[AYUDA] Comando recibido de ${message.author.username} (${message.author.id}) en canal ${message.channelId}. Contenido: "${message.content}"`);
+    
     const recentMsgs = await message.channel.messages.fetch({ limit: 20 });
     const nonBotAuthors = new Set(recentMsgs.filter(m => !m.author.bot).map(m => m.author.id));
-    console.log(`[AYUDA] Participantes únicos: ${nonBotAuthors.size}, Total mensajes recientes: ${recentMsgs.size}`);
+
+    let activation;
     
+    // C) Override del docente: forzar intervención
+    if (forceOverride) {
+        activation = {
+            activationReason: 'teacher_override',
+            participantsDetected: nonBotAuthors.size,
+            rolesDetected: [],
+            messageCount: recentMsgs.size
+        };
+        console.log(`[AYUDA] Activado por override del docente`);
+    } else {
+        activation = await checkFlexibleActivation(message);
+    }
+    
+    // Registrar en BD con metadatos completos
     try {
-        await insertHelpRequest(message.channelId, message.author.id, nonBotAuthors.size, recentMsgs.size);
-        console.log(`[AYUDA] Petición registrada en BD`);
+        await insertHelpRequest(
+            message.channelId, 
+            message.author.id, 
+            activation.participantsDetected, 
+            activation.messageCount,
+            activation.activationReason,
+            JSON.stringify(activation.rolesDetected)
+        );
+        console.log(`[AYUDA] Petición registrada: ${activation.activationReason}`);
     } catch (err) {
         console.error('[AYUDA] Error logging help request:', err);
     }
 
-    // Barrera de cooperación
-    if (nonBotAuthors.size < 3) {
-        console.log(`[AYUDA] Barrera NO pasada: solo ${nonBotAuthors.size} participantes (se necesitan ≥3)`);
-        return message.reply('⚠️ **Barrera:** Necesito al menos 3 miembros debatiendo. ¡Involucrad a vuestros compañeros!');
+    // Verificar si se cumple alguna condición de activación
+    if (!activation.activationReason) {
+        console.log(`[AYUDA] ACTIVACIÓN RECHAZADA: ${activation.participantsDetected} participantes`);
+        
+        let rejectionMsg = '⚠️ **Activación pendiente:**\n\n';
+        rejectionMsg += 'Para activar el facilitador, se necesita:\n';
+        rejectionMsg += '• Al menos 3 participantes en el chat, O\n';
+        rejectionMsg += '• Al menos 1 mensaje del Secretario/a Y 1 de otro rol.\n\n';
+        rejectionMsg += 'El docente puede forzar intervención con `/forzar_ayuda`.';
+        
+        return message.reply(rejectionMsg);
     }
-    console.log(`[AYUDA] Barrera PASADA: ${nonBotAuthors.size} participantes`);
+    console.log(`[AYUDA] ACTIVACIÓN ACEPTADA: ${activation.activationReason}`);
 
     // Análisis y generación de respuesta
     try {
@@ -183,7 +272,7 @@ async function handleHelpCommand(message, openai) {
             messages: [
                 {
                     role: "system",
-                    content: `Eres un Facilitador Cooperativo experto en andamiaje metacognitivo.
+                    content: `Eres un Facilitador colaborativo experto en andamiaje metacognitivo.
 
 TU ROL (NO negociable):
 ❌ NO tutor de contenidos académicos.

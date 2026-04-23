@@ -11,9 +11,9 @@ const {
     insertPeerReview, 
     insertSurveyResult, 
     insertParticipationLog 
-} = require('./cooperative/cooperative_db.js');
-const { commands } = require('./cooperative/commands.js');
-const { handleHelpCommand } = require('./cooperative/help.js');
+} = require('./collaborative/collaborative_db.js');
+const { commands } = require('./collaborative/commands.js');
+const { handleHelpCommand } = require('./collaborative/help.js');
 
 const openai = new OpenAI({ 
     apiKey: process.env.GROQ_API_KEY, 
@@ -30,7 +30,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 (async () => {
     try {
         await rest.put(Routes.applicationCommands(process.env.DISCORD_CLIENT_ID), { body: commands });
-        console.log('✅ Cooperative Commands Registered');
+        console.log('✅ Collaborative Commands Registered');
     } catch (err) { console.error(err); }
 })();
 
@@ -94,6 +94,28 @@ client.on(Events.InteractionCreate, async interaction => {
             console.error('Error saving survey:', err);
             return interaction.reply({ content: '❌ Error al guardar la encuesta.', ephemeral: true });
         }        
+    }
+    
+    if (interaction.commandName === 'forzar_ayuda') {
+        const fakeMessage = {
+            channelId: interaction.channelId,
+            author: { id: interaction.user.id, username: interaction.user.username, bot: false },
+            content: '!ayuda (forzado por docente)',
+            channel: {
+                messages: {
+                    fetch: async () => interaction.channel.messages.fetch({ limit: 20 })
+                }
+            },
+            reply: async (content) => interaction.reply({ content, ephemeral: false })
+        };
+        
+        try {
+            await handleHelpCommand(fakeMessage, openai, true);
+        } catch (err) {
+            console.error('Error en forzar_ayuda:', err);
+            interaction.reply({ content: '❌ Error al procesar la solicitud.', ephemeral: true });
+        }
+        return;
     }
 });
 

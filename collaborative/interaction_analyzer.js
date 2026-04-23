@@ -39,7 +39,7 @@ const ANALYSIS_SCHEMA = {
     }
 };
 
-const ANALYSIS_SYSTEM_PROMPT = `Eres un analizador de contexto colaborativo para un sistema de aprendizaje cooperativo.
+const ANALYSIS_SYSTEM_PROMPT = `Eres un analizador de contexto colaborativo para un sistema de aprendizaje colaborativo.
 
 Tu tarea es analizar los mensajes recientes de un equipo de estudiantes y devolver un JSON con el análisis.
 

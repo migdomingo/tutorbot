@@ -67,7 +67,7 @@ analyzeChatContext(message, openai)
 ### 2.4 Prompt del Sistema (implementado)
 
 ```system
-Eres un analizador de contexto colaborativo para un sistema de aprendizaje cooperativo.
+Eres un analizador de contexto colaborativo para un sistema de aprendizaje colaborativo.
 
 Tu tarea es analizar los mensajes recientes de un equipo de estudiantes y devolver un JSON con el análisis.
 

@@ -14,7 +14,7 @@ const commands = [
     // Command to assign roles to the team
     new SlashCommandBuilder()
         .setName('asignar_roles')
-        .setDescription('Asigna roles de aprendizaje cooperativo a los miembros')
+        .setDescription('Asigna roles de aprendizaje colaborativo a los miembros')
         .setDefaultMemberPermissions(PermissionFlagsBits.ManageChannels)
         .addUserOption(opt => opt.setName('lider').setDescription('Coordinador/Scrum Master').setRequired(true))
         .addUserOption(opt => opt.setName('secretario').setDescription('Secretario/Scribe').setRequired(true))
@@ -28,10 +28,16 @@ const commands = [
         .addIntegerOption(opt => opt.setName('nota').setDescription('Nota del 1 al 5').setRequired(true).setMinValue(1).setMaxValue(5))
         .addStringOption(opt => opt.setName('comentario').setDescription('Justifica tu valoración').setRequired(true)),
 
-    // Teacher command to see the cooperation report
+    // Teacher command to see the collaboration report
     new SlashCommandBuilder()
         .setName('informe_cooperacion')
         .setDescription('Muestra el estado de colaboración y coevaluaciones')
+        .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
+    
+    // Teacher command to force intervention
+    new SlashCommandBuilder()
+        .setName('forzar_ayuda')
+        .setDescription('Fuerza la intervención del facilitador (docente/admin)')
         .setDefaultMemberPermissions(PermissionFlagsBits.Administrator),
     
     new SlashCommandBuilder()

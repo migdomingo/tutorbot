@@ -76,7 +76,9 @@ const dbInitialize = async () => {
             user_id TEXT,
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
             participants_before INTEGER,
-            message_count_before INTEGER
+            message_count_before INTEGER,
+            activation_reason TEXT,
+            roles_detected TEXT
         )
     `);
     await dbRun(`
@@ -120,6 +122,15 @@ const dbInitialize = async () => {
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
+    
+    // Migración: agregar columnas si no existen (para BD existente)
+    try {
+        await dbRun(`ALTER TABLE help_requests ADD COLUMN activation_reason TEXT`);
+        await dbRun(`ALTER TABLE help_requests ADD COLUMN roles_detected TEXT`);
+        console.log('✅ Columnas migradas a help_requests');
+    } catch (e) {
+        // Puede fallar si las columnas ya existen - no es crítico
+    }
 };
 
 const clearChannelData = async (channelId) => {
@@ -145,8 +156,8 @@ const insertParticipationLog = async (channelId, userId, username) => {
     await dbRun(`INSERT INTO participation_log (channel_id, user_id, username) VALUES (?, ?, ?)`, [channelId, userId, username]);
 };
 
-const insertHelpRequest = async (channelId, userId, participantsBefore, messageCountBefore) => {
-    await dbRun(`INSERT INTO help_requests (channel_id, user_id, participants_before, message_count_before) VALUES (?, ?, ?, ?)`, [channelId, userId, participantsBefore, messageCountBefore]);
+const insertHelpRequest = async (channelId, userId, participantsBefore, messageCountBefore, activationReason = 'multi_participant_chat', rolesDetected = '[]') => {
+    await dbRun(`INSERT INTO help_requests (channel_id, user_id, participants_before, message_count_before, activation_reason, roles_detected) VALUES (?, ?, ?, ?, ?, ?)`, [channelId, userId, participantsBefore, messageCountBefore, activationReason, rolesDetected]);
 };
 
 const insertBotIntervention = async (channelId, interventionType) => {
@@ -154,7 +165,15 @@ const insertBotIntervention = async (channelId, interventionType) => {
 };
 
 const getRoles = async(channelId) =>  {
-    return await dbAll(`SELECT username, role_name FROM team_roles WHERE channel_id = ?`, [channelId]);
+    return await dbAll(`SELECT user_id, username, role_name FROM team_roles WHERE channel_id = ?`, [channelId]);
+};
+
+const getRecentMessagesWithRoleMentions = async (channelId, limit = 10) => {
+    return await dbAll(`SELECT p.user_id, p.username, p.role_name 
+                FROM participation_log p
+                WHERE p.channel_id = ?
+                ORDER BY p.timestamp DESC
+                LIMIT ?`, [channelId, limit]);
 };
 
 const getRecentSuggestions = async (channelId, role, limit = 3) => {
@@ -178,6 +197,7 @@ module.exports = {
     insertParticipationLog,
     insertHelpRequest,
     getRoles, 
+    getRecentMessagesWithRoleMentions,
     insertBotIntervention,
     dbRun,
     dbAll,
