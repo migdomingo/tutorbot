@@ -10,10 +10,24 @@ const {
     upsertRole, 
     insertPeerReview, 
     insertSurveyResult, 
-    insertParticipationLog 
-} = require('./collaborative/collaborative_db.js');
-const { commands } = require('./collaborative/commands.js');
-const { handleHelpCommand } = require('./collaborative/help.js');
+    insertParticipationLog,
+    getRoles
+} = require('./commons/db.js');
+const { commands } = require('./commons/commands.js');
+const { handleCollaborativeHelpCommand } = require('./collaborative/help.js');
+const { handleCooperativeHelpCommand, handleAutomaticMilestoneIntervention } = require('./cooperative/help.js');
+
+// Determine mode from environment variable or command line argument
+const args = process.argv.slice(2);
+let modeFromArg = null;
+for (const arg of args) {
+  if (arg.startsWith('mode=')) {
+    modeFromArg = arg.split('=')[1];
+    break;
+  }
+}
+const mode = process.env.BOT_MODE || modeFromArg || 'collaborative';
+console.log(`🤖 Bot iniciado en modo: ${mode}`);
 
 const openai = new OpenAI({ 
     apiKey: process.env.GROQ_API_KEY, 
@@ -30,7 +44,7 @@ const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 (async () => {
     try {
         await rest.put(Routes.applicationCommands(process.env.DISCORD_CLIENT_ID), { body: commands });
-        console.log('✅ Collaborative Commands Registered');
+        console.log(`✅ ${mode} Commands Registered`);
     } catch (err) { console.error(err); }
 })();
 
@@ -110,7 +124,11 @@ client.on(Events.InteractionCreate, async interaction => {
         };
         
         try {
-            await handleHelpCommand(fakeMessage, openai, true);
+            if (mode === 'collaborative') {
+                await handleCollaborativeHelpCommand(fakeMessage, openai, true);
+            } else if (mode === 'cooperative') {
+                await handleCooperativeHelpCommand(fakeMessage, openai, true);
+            }
         } catch (err) {
             console.error('Error en forzar_ayuda:', err);
             interaction.reply({ content: '❌ Error al procesar la solicitud.', ephemeral: true });
@@ -141,9 +159,18 @@ client.on(Events.MessageCreate, async message => {
         return;
     }
 
-    // Delegar !ayuda al módulo help.js
+    // Delegar !ayuda al módulo help.js        
     if (message.content.startsWith('!ayuda')) {
-        return handleHelpCommand(message, openai);
+        if (mode === 'collaborative') {
+            return handleCollaborativeHelpCommand(message, openai);
+        }
+        if (mode === 'cooperative') {
+            return handleCooperativeHelpCommand(message, openai);
+        }
+    } else if (mode === 'cooperative' && !message.author.bot) {
+        const roles = await getRoles(message.channelId);
+        if (!roles || roles.length === 0) return;
+        await handleAutomaticMilestoneIntervention(message, roles);
     }
 });
 

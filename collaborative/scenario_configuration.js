@@ -308,16 +308,27 @@ module.exports = {
     facilitatorProfile: "Habla como un profesor que acompaña, no como un experto que sabe más"
   },
 
-  /**
-   * Intervention Templates (legacy / for reference)
-   * These are static message templates, not used by AI responses
-   */
-  interventionTemplates: {
-    coordinatorPrompt: "🤖 **Recordatorio de rol:** @Coordinador, ¿estáis avanzando según la planificación? ¿Alguien necesita ayuda para coordinar tareas?",
-    secretaryPrompt: "🤖 **Pregunta al Secretario:** ¿Ya habéis resumido las ideas clave de esta discusión? Comparte el borrador con el equipo.",
-    criticPrompt: "🤖 **Invitación al Crítico:** @Portavoz, ¿has identificado posibles fallos o alternativas? Es momento de someter las ideas a prueba.",
-    participationGate: "⚠️ **Barrera de Cooperación:** Necesito ver que al menos 3 miembros del equipo están debatiendo antes de intervenir. ¡Involucrad a vuestros compañeros!",
-    equityCheck: "🤔 **Observación:** Noto que algunas voces predominan más. ¿Cómo podemos asegurar que todos participen por igual?",
-    metacognitive: "🧠 **Regulación:** ¿Han revisado los criterios de éxito? ¿Su enfoque es el correcto?"
-  }
+/**
+ * Intervention Templates (legacy / for reference)
+ * These are static message templates, not used by AI responses
+ */
+interventionTemplates: {
+  coordinatorPrompt: "🤖 **Recordatorio de rol:** @Coordinador, ¿estáis avanzando según la planificación? ¿Alguien necesita ayuda para coordinar tareas?",
+  secretaryPrompt: "🤖 **Pregunta al Secretario:** ¿Ya habéis resumido las ideas clave de esta discusión? Comparte el borrador con el equipo.",
+  criticPrompt: "🤖 **Invitación al Crítico:** @Portavoz, ¿has identificado posibles fallos o alternativas? Es momento de someter las ideas a prueba.",
+  participationGate: "⚠️ **Barrera de Cooperación:** Necesito ver que al menos 3 miembros del equipo están debatiendo antes de intervenir. ¡Involucrad a vuestros compañeros!",
+  equityCheck: "🤔 **Observación:** Noto que algunas voces predominan más. ¿Cómo podemos asegurar que todos participen por igual?",
+  metacognitive: "🧠 **Regulación:** ¿Han revisado los criterios de éxito? ¿Su enfoque es el correcto?"
+},
+
+/**
+ * Pedagogical Configuration for Collaborative Learning Mode
+ * Minimal configuration for mode switching
+ */
+pedagogicalConfig: {
+  intervention_policy: "on_demand_only",
+  role_strictness: "flexible",
+  allowed_interventions: ["regulation", "metacognitive_scaffolding"],
+  automatic_interventions_enabled: false
+}
 };

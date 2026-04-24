@@ -12,8 +12,8 @@ const {
     getRecentSuggestions, 
     recordSuggestion,
     getRecentMessagesWithRoleMentions
-} = require('./collaborative_db.js');
-const scenarioConfig = require('../scenarios/scenario_project.js');
+} = require('../commons/db.js');
+const scenarioConfig = require('./scenario_configuration.js');
 
 /**
  * Get varied suggestions for a role, avoiding recent repetitions
@@ -353,5 +353,5 @@ ${suggestionsContext}
 }
 
 module.exports = {
-    handleHelpCommand
+    handleCollaborativeHelpCommand: handleHelpCommand
 };

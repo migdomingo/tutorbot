@@ -1,5 +1,5 @@
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./cooperative_learning.sqlite');
+const db = new sqlite3.Database('./collaborative_learning.sqlite');
 
 // Promisify all db methods
 const dbPromise = new Promise((resolve, reject) => {
@@ -127,10 +127,39 @@ const dbInitialize = async () => {
     try {
         await dbRun(`ALTER TABLE help_requests ADD COLUMN activation_reason TEXT`);
         await dbRun(`ALTER TABLE help_requests ADD COLUMN roles_detected TEXT`);
+        await dbRun(`ALTER TABLE help_requests ADD COLUMN mode TEXT DEFAULT 'collaborative'`);
         console.log('✅ Columnas migradas a help_requests');
     } catch (e) {
         // Puede fallar si las columnas ya existen - no es crítico
     }
+    
+    // Add mode column to bot_interventions
+    try {
+        await dbRun(`ALTER TABLE bot_interventions ADD COLUMN mode TEXT DEFAULT 'collaborative'`);
+        console.log('✅ Columna mode añadida a bot_interventions');
+    } catch (e) {
+        // Puede fallar si la columna ya existe - no es crítico
+    }
+    
+    // Add mode column to participation_log
+    try {
+        await dbRun(`ALTER TABLE participation_log ADD COLUMN mode TEXT DEFAULT 'collaborative'`);
+        console.log('✅ Columna mode añadida a participation_log');
+    } catch (e) {
+        // Puede fallar si la columna ya existe - no es crítico
+    }
+    
+    // Add mode column to teacher_assessments
+    try {
+        await dbRun(`ALTER TABLE teacher_assessments ADD COLUMN mode TEXT DEFAULT 'collaborative'`);
+        console.log('✅ Columna mode añadida a teacher_assessments');
+    } catch (e) {
+        // Puede fallar si la columna ya existe - no es crítico
+    }
+    await ensureColumnExists('help_requests', 'mode', "TEXT DEFAULT 'collaborative'");
+    await ensureColumnExists('bot_interventions', 'mode', "TEXT DEFAULT 'collaborative'");
+    await ensureColumnExists('participation_log', 'mode', "TEXT DEFAULT 'collaborative'");
+    await ensureColumnExists('teacher_assessments', 'mode', "TEXT DEFAULT 'collaborative'");
 };
 
 const clearChannelData = async (channelId) => {
@@ -152,16 +181,16 @@ const insertSurveyResult = async (channelId, userId, username, q1, q2, q3, comme
     await dbRun(`INSERT INTO survey_results (channel_id, user_id, username, q1_utility, q2_interdependence, q3_ease_of_use, q4_open_comment) VALUES (?, ?, ?, ?, ?, ?, ?)`, [channelId, userId, username, q1, q2, q3, comment]);
 };
 
-const insertParticipationLog = async (channelId, userId, username) => {
-    await dbRun(`INSERT INTO participation_log (channel_id, user_id, username) VALUES (?, ?, ?)`, [channelId, userId, username]);
+const insertParticipationLog = async (channelId, userId, username, mode = 'collaborative') => {
+    await dbRun(`INSERT INTO participation_log (channel_id, user_id, username, mode) VALUES (?, ?, ?, ?)`, [channelId, userId, username, mode]);
 };
 
-const insertHelpRequest = async (channelId, userId, participantsBefore, messageCountBefore, activationReason = 'multi_participant_chat', rolesDetected = '[]') => {
-    await dbRun(`INSERT INTO help_requests (channel_id, user_id, participants_before, message_count_before, activation_reason, roles_detected) VALUES (?, ?, ?, ?, ?, ?)`, [channelId, userId, participantsBefore, messageCountBefore, activationReason, rolesDetected]);
+const insertHelpRequest = async (channelId, userId, participantsBefore, messageCountBefore, activationReason = 'multi_participant_chat', rolesDetected = '[]', mode = 'collaborative') => {
+    await dbRun(`INSERT INTO help_requests (channel_id, user_id, participants_before, message_count_before, activation_reason, roles_detected, mode) VALUES (?, ?, ?, ?, ?, ?, ?)`, [channelId, userId, participantsBefore, messageCountBefore, activationReason, rolesDetected, mode]);
 };
 
-const insertBotIntervention = async (channelId, interventionType) => {
-    await dbRun(`INSERT INTO bot_interventions (channel_id, intervention_type) VALUES (?, ?)`, [channelId, interventionType]);
+const insertBotIntervention = async (channelId, interventionType, mode = 'collaborative') => {
+    await dbRun(`INSERT INTO bot_interventions (channel_id, intervention_type, mode) VALUES (?, ?, ?)`, [channelId, interventionType, mode]);
 };
 
 const getRoles = async(channelId) =>  {
@@ -188,6 +217,31 @@ const recordSuggestion = async (channelId, role, suggestionText) => {
                 [channelId, role, suggestionText]);
 };
 
+// OPTIONAL: Read functions filtered by mode (for analysis)
+const getHelpRequestsByMode = async (channelId, mode) => {
+    return await dbAll(`SELECT * FROM help_requests WHERE channel_id = ? AND mode = ? ORDER BY timestamp`, [channelId, mode]);
+};
+
+const getBotInterventionsByMode = async (channelId, mode) => {
+    return await dbAll(`SELECT * FROM bot_interventions WHERE channel_id = ? AND mode = ? ORDER BY timestamp`, [channelId, mode]);
+};
+
+const getParticipationLogByMode = async (channelId, mode) => {
+    return await dbAll(`SELECT * FROM participation_log WHERE channel_id = ? AND mode = ? ORDER BY timestamp`, [channelId, mode]);
+};
+
+
+const ensureColumnExists = async (table, column, definition) => {
+  const cols = await dbAll(`PRAGMA table_info(${table})`);
+  const exists = cols.some(c => c.name === column);
+
+  if (!exists) {
+    console.log(`[DB MIGRATION] Añadiendo ${column} a ${table}`);
+    await dbRun(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+};
+
+
 module.exports = {
     dbInitialize,
     clearChannelData,
@@ -202,5 +256,9 @@ module.exports = {
     dbRun,
     dbAll,
     getRecentSuggestions,
-    recordSuggestion
+    recordSuggestion,
+    // Optional read functions for analysis
+    getHelpRequestsByMode,
+    getBotInterventionsByMode,
+    getParticipationLogByMode
 }

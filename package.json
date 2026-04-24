@@ -21,7 +21,8 @@
   "type": "commonjs",
   "main": "index.js",
   "scripts": {
-    "start": "node index.js",
+    "start_cooperative": "node index.js mode=cooperative",
+    "start_collaborative": "node index.js mode=collaborative",
     "analysis": "node analysis.js"
   },
   "dependencies": {

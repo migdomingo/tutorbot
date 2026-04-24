@@ -1,4 +1,4 @@
-const scenarioConfig = require('../scenarios/scenario_project.js');
+const scenarioConfig = require('./scenario_configuration.js');
 
 const ANALYSIS_SCHEMA = {
     type: "json_object",
@@ -39,7 +39,7 @@ const ANALYSIS_SCHEMA = {
     }
 };
 
-const ANALYSIS_SYSTEM_PROMPT = `Eres un analizador de contexto colaborativo para un sistema de aprendizaje colaborativo.
+const ANALYSIS_SYSTEM_PROMPT = `Eres un analizador de contexto colaborativo para un sistema de aprendizaje cooperativo.
 
 Tu tarea es analizar los mensajes recientes de un equipo de estudiantes y devolver un JSON con el análisis.
 
