@@ -60,6 +60,7 @@ const dbInitialize = async () => {
     await dbRun(`
         CREATE TABLE IF NOT EXISTS survey_results (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id TEXT,
             user_id TEXT,
             username TEXT,
             q1_utility INTEGER,
@@ -122,6 +123,19 @@ const dbInitialize = async () => {
             timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
         )
     `);
+
+    // NEW: Contexto de la actividad declarado por el docente
+    await dbRun(`
+        CREATE TABLE IF NOT EXISTS activity_context (
+            channel_id TEXT PRIMARY KEY,
+            domain TEXT,
+            topic TEXT,
+            task_type TEXT,
+            required_parts TEXT,
+            role_mapping TEXT,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+    `);
     
     // Migración: agregar columnas si no existen (para BD existente)
     try {
@@ -160,6 +174,7 @@ const dbInitialize = async () => {
     await ensureColumnExists('bot_interventions', 'mode', "TEXT DEFAULT 'collaborative'");
     await ensureColumnExists('participation_log', 'mode', "TEXT DEFAULT 'collaborative'");
     await ensureColumnExists('teacher_assessments', 'mode', "TEXT DEFAULT 'collaborative'");
+    await ensureColumnExists('survey_results', 'channel_id', 'TEXT');
 };
 
 const clearChannelData = async (channelId) => {
@@ -198,8 +213,9 @@ const getRoles = async(channelId) =>  {
 };
 
 const getRecentMessagesWithRoleMentions = async (channelId, limit = 10) => {
-    return await dbAll(`SELECT p.user_id, p.username, p.role_name 
+    return await dbAll(`SELECT p.user_id, p.username, t.role_name
                 FROM participation_log p
+                LEFT JOIN team_roles t ON p.user_id = t.user_id AND p.channel_id = t.channel_id
                 WHERE p.channel_id = ?
                 ORDER BY p.timestamp DESC
                 LIMIT ?`, [channelId, limit]);
@@ -242,6 +258,62 @@ const ensureColumnExists = async (table, column, definition) => {
 };
 
 
+const getLastAutomaticIntervention = async (channelId) => {
+    return await dbGet(
+        `SELECT timestamp FROM bot_interventions
+         WHERE channel_id = ? AND intervention_type = 'automatic_milestone'
+         ORDER BY timestamp DESC LIMIT 1`,
+        [channelId]
+    );
+};
+
+const getChannelStats = async (channelId) => {
+    const roles = await dbAll(`SELECT user_id, username, role_name FROM team_roles WHERE channel_id = ?`, [channelId]);
+    const helpRow = await dbGet(`SELECT COUNT(*) as count FROM help_requests WHERE channel_id = ?`, [channelId]);
+    const interventions = await dbAll(
+        `SELECT intervention_type, COUNT(*) as count FROM bot_interventions WHERE channel_id = ? GROUP BY intervention_type`,
+        [channelId]
+    );
+    const participation = await dbAll(
+        `SELECT user_id, username, COUNT(*) as msg_count FROM participation_log WHERE channel_id = ? GROUP BY user_id, username ORDER BY msg_count DESC`,
+        [channelId]
+    );
+    const peerReviews = await dbAll(`SELECT reviewer_id, reviewee_id, score, comment FROM peer_reviews WHERE channel_id = ?`, [channelId]);
+    return { roles, helpCount: helpRow?.count || 0, interventions, participation, peerReviews };
+};
+
+const insertTeacherAssessment = async (channelId, data, mode = 'collaborative') => {
+    await dbRun(
+        `INSERT INTO teacher_assessments
+         (channel_id, participation_summary, regulation_summary, collaboration_summary,
+          strengths, improvement_suggestions, overall_assessment, mode)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [channelId, data.participation_summary, data.regulation_summary, data.collaboration_summary,
+         data.strengths, data.improvement_suggestions, data.overall_assessment, mode]
+    );
+};
+
+const upsertActivityContext = async (channelId, domain, topic, taskType, requiredParts, roleMapping) => {
+    await dbRun(`
+        INSERT OR REPLACE INTO activity_context 
+        (channel_id, domain, topic, task_type, required_parts, role_mapping, updated_at) 
+        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `, [channelId, domain, topic, taskType, typeof requiredParts === 'string' ? requiredParts : JSON.stringify(requiredParts), typeof roleMapping === 'string' ? roleMapping : JSON.stringify(roleMapping)]);
+};
+
+const getActivityContext = async (channelId) => {
+    const row = await dbGet(`SELECT * FROM activity_context WHERE channel_id = ?`, [channelId]);
+    if (row && row.required_parts && row.role_mapping) {
+        try {
+            row.required_parts = JSON.parse(row.required_parts);
+            row.role_mapping = JSON.parse(row.role_mapping);
+        } catch (e) {
+            console.error('Error parsing JSON from activity_context', e);
+        }
+    }
+    return row;
+};
+
 module.exports = {
     dbInitialize,
     clearChannelData,
@@ -250,15 +322,20 @@ module.exports = {
     insertSurveyResult,
     insertParticipationLog,
     insertHelpRequest,
-    getRoles, 
+    getRoles,
     getRecentMessagesWithRoleMentions,
     insertBotIntervention,
     dbRun,
     dbAll,
     getRecentSuggestions,
     recordSuggestion,
+    getLastAutomaticIntervention,
+    getChannelStats,
+    insertTeacherAssessment,
     // Optional read functions for analysis
     getHelpRequestsByMode,
     getBotInterventionsByMode,
-    getParticipationLogByMode
+    getParticipationLogByMode,
+    upsertActivityContext,
+    getActivityContext
 }

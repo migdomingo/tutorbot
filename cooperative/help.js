@@ -11,8 +11,12 @@ const { analyzeCooperativeContext } = require('./interaction_analyzer.js');
 const {
   getRoles,
   insertHelpRequest,
-  insertBotIntervention
+  insertBotIntervention,
+  getActivityContext,
+  getLastAutomaticIntervention
 } = require('../commons/db.js');
+
+const AUTOMATIC_INTERVENTION_COOLDOWN_MINUTES = 10;
 
 /**
  * Helper: map role id to display name
@@ -22,138 +26,69 @@ function label(roleId) {
 }
 
 /**
- * Build response based on cooperative analysis and policy
+ * Generate response based on cooperative analysis, activity context and strict rules using LLM
  */
-function buildCooperativeResponse(context, roles) {
-  const lines = [];
+async function generateCooperativeResponse(context, roles, activityContext, openai, isAutomatic = false) {
+  const prompt = `Eres un GESTOR DEL PROCESO COOPERATIVO.
+Tu función es hacer PREGUNTAS DE VERIFICACIÓN DE PROCESO para asegurar la organización.
 
-  console.log(`[COOP_BUILD_RESPONSE] Building response for context:`, {
-    phase: context.phase,
-    inactiveRoles: context.inactiveRoles,
-    processIssues: context.processIssues,
-    allowedInterventions: scenarioConfig.allowed_interventions
-  });
+CONTEXTO DECLARADO POR EL DOCENTE (NO INFIERAS NINGÚN OTRO):
+- Dominio: ${activityContext.domain}
+- Tema: ${activityContext.topic}
+- Tipo de tarea: ${activityContext.task_type}
+- Partes Requeridas: ${activityContext.required_parts.join(', ')}
+- Mapeo de Roles a Tareas: ${JSON.stringify(activityContext.role_mapping)}
 
-  // ──────────────────────────────────────────
-  // 1. Coordination checks
-  // ──────────────────────────────────────────
-  if (
-    scenarioConfig.allowed_interventions.includes('coordination') &&
-    context.inactiveRoles.includes('coordinator')
-  ) {
-    const coord = roles.find(r => r.role_name === 'coordinator');
-    if (coord) {
-      const message = `${coord.username}, como ${label('coordinator')}, ¿tienes claro si todas las tareas están repartidas y en marcha?`;
-      lines.push(message);
-      console.log(`[COOP_BUILD_RESPONSE] Added coordination message for ${coord.username}: "${message}"`);
-    }
+ESTADO DEL GRUPO (Analizado por el sistema):
+- Fase actual (según participación): ${context.phase.toUpperCase()}
+- Roles activos: ${context.activeRoles.join(', ') || 'Ninguno'}
+- Roles inactivos: ${context.inactiveRoles.join(', ') || 'Ninguno'}
+- Miembros y sus roles: ${roles.map(r => `${r.username} (${r.role_name})`).join(', ')}
+${isAutomatic ? 'TIPO DE INTERVENCIÓN: Intervención automática de seguimiento (Milestone).' : 'TIPO DE INTERVENCIÓN: Petición de ayuda directa de los usuarios (!ayuda).'}
+
+RESTRICCIONES ABSOLUTAS Y NO NEGOCIABLES:
+❌ NO expliques conceptos de la materia.
+❌ NO corrijas errores conceptuales o técnicos.
+❌ NO valides o invalides respuestas.
+❌ NO proporciones ejemplos disciplinarios.
+❌ NO evalúes al alumnado o al grupo.
+❌ NO sustituyas decisiones del grupo ("haced esto", "debéis organizarlo así").
+❌ NO infieras comprensión cognitiva ("parece que no entendéis").
+
+LO QUE SÍ PUEDES HACER:
+✅ Preguntar por la estructura del trabajo.
+✅ Preguntar por el reparto de responsabilidades (usando el Mapeo de Roles).
+✅ Preguntar por las Fases.
+✅ Preguntar explícitamente a los roles inactivos si están avanzando en sus partes asiganadas.
+✅ Usar los NOMBRES DE USUARIO para dirigirte a ellos.
+
+FORMATO:
+Haz 1 o 2 preguntas breves dirigidas a los usuarios correspondientes. Se breve (2-3 líneas max). Tono de profesor observador.`;
+
+  try {
+      const completion = await openai.chat.completions.create({
+          model: "llama-3.3-70b-versatile",
+          messages: [
+              { role: "system", content: prompt },
+              { role: "user", content: "Genera la intervención organizativa basándote extrictamente en el contexto de las partes declaradas y el estado de los roles." }
+          ]
+      });
+      return completion.choices[0].message.content;
+  } catch (err) {
+      console.error('[COOP_HELP] Error llamando a OpenAI:', err);
+      return "⚠️ Error al generar la ayuda cooperativa. Continuad con vuestras tareas asignadas.";
   }
-
-  // ──────────────────────────────────────────
-  // 2. Task management checks
-  // ──────────────────────────────────────────
-  if (
-    scenarioConfig.allowed_interventions.includes('task_management')
-  ) {
-    const taskRoles = roles.filter(r =>
-      r.role_name.startsWith('task')
-    );
-    taskRoles.forEach(r => {
-      if (context.inactiveRoles.includes(r.role_name)) {
-        const message = `${r.username}, ¿tu parte (${label(r.role_name)}) está completada o pendiente de ajuste?`;
-        lines.push(message);
-        console.log(`[COOP_BUILD_RESPONSE] Added task management message for ${r.username}: "${message}"`);
-      }
-    });
-  }
-
-  // ──────────────────────────────────────────
-  // 3. Review / integration checks
-  // ──────────────────────────────────────────
-  if (
-    scenarioConfig.allowed_interventions.includes('review_checks') &&
-    (context.phase === 'revision' || context.phase === 'cierre')
-  ) {
-    const supervisor = roles.find(r => r.role_name === 'supervisor');
-    if (supervisor && context.inactiveRoles.includes('supervisor')) {
-      const message = `${supervisor.username}, como ${label('supervisor')}, ¿alguien está revisando que todas las partes encajen antes de entregar?`;
-      lines.push(message);
-      console.log(`[COOP_BUILD_RESPONSE] Added review check message for ${supervisor.username}: "${message}"`);
-    }
-  }
-
-  // Limit output length strictly
-  const finalLines = lines.slice(0, 3);
-  console.log(`[COOP_BUILD_RESPONSE] Final response (${finalLines.length} lines):`, finalLines.join('\n'));
-  return finalLines.join('\n');
-}
-
-/**
- * Build response based on cooperative analysis and policy
- */
-function buildCooperativeResponse(context, roles) {
-  const lines = [];
-
-  // ──────────────────────────────────────────
-  // 1. Coordination checks
-  // ──────────────────────────────────────────
-  if (
-    scenarioConfig.allowed_interventions.includes('coordination') &&
-    context.inactiveRoles.includes('coordinator')
-  ) {
-    const coord = roles.find(r => r.role_name === 'coordinator');
-    if (coord) {
-      lines.push(
-        `${coord.username}, como ${label('coordinator')}, ¿tienes claro si todas las tareas están repartidas y en marcha?`
-      );
-    }
-  }
-
-  // ──────────────────────────────────────────
-  // 2. Task management checks
-  // ──────────────────────────────────────────
-  if (
-    scenarioConfig.allowed_interventions.includes('task_management')
-  ) {
-    const taskRoles = roles.filter(r =>
-      r.role_name.startsWith('task')
-    );
-    taskRoles.forEach(r => {
-      if (context.inactiveRoles.includes(r.role_name)) {
-        lines.push(
-          `${r.username}, ¿tu parte (${label(r.role_name)}) está completada o pendiente de ajuste?`
-        );
-      }
-    });
-  }
-
-  // ──────────────────────────────────────────
-  // 3. Review / integration checks
-  // ──────────────────────────────────────────
-  if (
-    scenarioConfig.allowed_interventions.includes('review_checks') &&
-    (context.phase === 'revision' || context.phase === 'cierre')
-  ) {
-    const supervisor = roles.find(r => r.role_name === 'supervisor');
-    if (supervisor && context.inactiveRoles.includes('supervisor')) {
-      lines.push(
-        `${supervisor.username}, como ${label('supervisor')}, ¿alguien está revisando que todas las partes encajen antes de entregar?`
-      );
-    }
-  }
-
-  // Limit output length strictly
-  return lines.slice(0, 3).join('\n');
 }
 
 /**
  * Main entry point for cooperative !ayuda
  */
-async function handleCooperativeHelpCommand(message, mode = 'cooperative') {
+async function handleCooperativeHelpCommand(message, openai, forceOverride = false) {
   console.log(
     `[COOP_HELP] !ayuda en canal ${message.channelId} por ${message.author.username}`
   );
 
+  const mode = 'cooperative';
   // 1. Log help request
   await insertHelpRequest(
     message.channelId,
@@ -165,7 +100,15 @@ async function handleCooperativeHelpCommand(message, mode = 'cooperative') {
     mode
   );
 
-  // 2. Load roles
+  // 2. Get activityContext
+  const activityContext = await getActivityContext(message.channelId);
+  if (!activityContext) {
+    return message.reply(
+      '⚠️ El docente aún no ha configurado la actividad. Espera a que se defina el contexto de trabajo.'
+    );
+  }
+
+  // 3. Load roles
   const roles = await getRoles(message.channelId);
   if (!roles || roles.length === 0) {
     return message.reply(
@@ -173,24 +116,23 @@ async function handleCooperativeHelpCommand(message, mode = 'cooperative') {
     );
   }
 
-  // 3. Analyze cooperative context
+  // 4. Analyze cooperative context
   const context = await analyzeCooperativeContext(message, roles);
   console.log('[COOP_ANALYZER]', context);
 
-  // 4. Generate response based on analysis + config
-  const response = buildCooperativeResponse(context, roles);
+  // 5. Generate dynamic response via LLM based on activityContext
+  const response = await generateCooperativeResponse(context, roles, activityContext, openai, false);
 
-  // 5. Log bot intervention if something is said
+  // 6. Log bot intervention
   if (response.trim().length > 0) {
     await insertBotIntervention(
       message.channelId,
       'coordination',
       mode
     );
-    return message.reply(response);
+    return message.reply(`🤖 **Gestor Cooperativo:**\n${response}`);
   }
 
-  // 6. Default neutral response
   return message.reply(
     'ℹ️ El proceso parece en marcha. Continuad con las tareas asignadas.'
   );
@@ -200,9 +142,20 @@ async function handleCooperativeHelpCommand(message, mode = 'cooperative') {
  * Automatic intervention based on cooperative process milestones
  * Triggered only when allowed by configuration and analyzer
  */
-async function handleAutomaticMilestoneIntervention(message, roles) {
+async function handleAutomaticMilestoneIntervention(message, roles, openai) {
   // Seguridad: solo si está permitido por configuración
   if (!scenarioConfig.automatic_interventions_enabled) return;
+
+  // Cooldown: evitar intervenciones repetidas en poco tiempo
+  const lastIntervention = await getLastAutomaticIntervention(message.channelId);
+  if (lastIntervention) {
+    const minutesSince = (Date.now() - new Date(lastIntervention.timestamp).getTime()) / 60000;
+    if (minutesSince < AUTOMATIC_INTERVENTION_COOLDOWN_MINUTES) return;
+  }
+
+  // Obtener contexto de actividad. Si no existe, no intervenir
+  const activityContext = await getActivityContext(message.channelId);
+  if (!activityContext) return;
 
   // Obtener contexto cooperativo
   const context = await analyzeCooperativeContext(message, roles);
@@ -210,46 +163,10 @@ async function handleAutomaticMilestoneIntervention(message, roles) {
   // El analizador decide si tiene sentido intervenir
   if (!context.automaticInterventionRecommended) return;
 
-  const lines = [];
+  // Llamar al LLM para la intervención
+  const response = await generateCooperativeResponse(context, roles, activityContext, openai, true);
 
-  // ──────────────────────────────────────────
-  // START – Recordatorio inicial de roles
-  // ──────────────────────────────────────────
-  if (context.phase === 'inicio') {
-    const coordinator = roles.find(r => r.role_name === 'coordinator');
-    if (coordinator) {
-      lines.push(
-        `Antes de empezar, ${coordinator.username}, como ${label('coordinator')}, confirma que todos saben qué tarea tienen asignada.`
-      );
-    }
-  }
-
-  // ──────────────────────────────────────────
-  // MIDPOINT – Comprobación de progreso
-  // ──────────────────────────────────────────
-  if (context.phase === 'desarrollo') {
-    roles.forEach(r => {
-      if (context.inactiveRoles.includes(r.role_name)) {
-        lines.push(
-          `${r.username}, recuerda comprobar que tu parte (${label(r.role_name)}) está avanzando según lo previsto.`
-        );
-      }
-    });
-  }
-
-  // ──────────────────────────────────────────
-  // PRE_CLOSE – Revisión e integración
-  // ──────────────────────────────────────────
-  if (context.phase === 'revision' || context.phase === 'cierre') {
-    const supervisor = roles.find(r => r.role_name === 'supervisor');
-    if (supervisor && context.inactiveRoles.includes('supervisor')) {
-      lines.push(
-        `${supervisor.username}, como ${label('supervisor')}, revisa que el trabajo final integra todas las partes antes de cerrar.`
-      );
-    }
-  }
-
-  if (lines.length === 0) return;
+  if (!response || response.trim().length === 0 || response.includes('Error')) return;
 
   // Log de intervención automática
   await insertBotIntervention(
@@ -258,8 +175,8 @@ async function handleAutomaticMilestoneIntervention(message, roles) {
     'cooperative'
   );
 
-  // Enviar mensaje (máximo 2–3 líneas)
-  return message.channel.send(lines.slice(0, 3).join('\n'));
+  // Enviar mensaje
+  return message.channel.send(`🤖 **Gestor Cooperativo [Automático]:**\n${response}`);
 }
 
 module.exports = {

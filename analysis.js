@@ -1,5 +1,5 @@
 const sqlite3 = require('sqlite3').verbose();
-const db = new sqlite3.Database('./collaborative/collaborative_learning.sqlite');
+const db = new sqlite3.Database('./collaborative_learning.sqlite');
 
 console.log("=== 📊 TFM DATA ANALYSIS REPORT ===\n");
 

@@ -51,10 +51,8 @@ module.exports = {
       displayName: "Coordinador/a",
       strict: true,
       responsibilities: [
-        "Asignar tareas a cada miembro",
-        "Verificar que todas las partes están en progreso",
-        "Gestionar tiempos y fases",
-        "Coordinar la revisión final"
+        "Coordinar el proceso",
+        "No desarrolla partes"
       ],
       allowedInterventions: [
         "reparto_de_tareas",
@@ -63,26 +61,62 @@ module.exports = {
       ]
     },
 
-    taskA: {
-      displayName: "Responsable de Tarea A",
+    task1: {
+      displayName: "Responsable de Tarea 1",
       strict: true,
       responsibilities: [
-        "Desarrollar completamente la parte A",
-        "Entregar su parte al coordinador",
+        "Responsable de la parte 1",
         "Responder a revisiones o correcciones"
       ],
       allowedInterventions: [
-        "verificacion_de_completitud",
-        "recordatorio_de_entrega"
+        "verificacion_de_completitud"
       ]
     },
 
-    taskB: {
-      displayName: "Responsable de Tarea B",
+    task2: {
+      displayName: "Responsable de Tarea 2",
       strict: true,
       responsibilities: [
-        "Desarrollar completamente la parte B",
-        "Sincronizar su trabajo con la tarea A",
+        "Responsable de la parte 2",
+        "Ajustar su parte tras la revisión"
+      ],
+      allowedInterventions: [
+        "verificacion_de_completitud",
+        "sincronizacion_de_partes"
+      ]
+    },
+
+    task3: {
+      displayName: "Responsable de Tarea 3",
+      strict: true,
+      responsibilities: [
+        "Responsable de la parte 3",
+        "Ajustar su parte tras la revisión"
+      ],
+      allowedInterventions: [
+        "verificacion_de_completitud",
+        "sincronizacion_de_partes"
+      ]
+    },
+
+    task4: {
+      displayName: "Responsable de Tarea 4",
+      strict: true,
+      responsibilities: [
+        "Responsable de la parte 4",
+        "Ajustar su parte tras la revisión"
+      ],
+      allowedInterventions: [
+        "verificacion_de_completitud",
+        "sincronizacion_de_partes"
+      ]
+    },
+
+    task5: {
+      displayName: "Responsable de Tarea 5",
+      strict: true,
+      responsibilities: [
+        "Responsable de la parte 5",
         "Ajustar su parte tras la revisión"
       ],
       allowedInterventions: [
@@ -95,10 +129,8 @@ module.exports = {
       displayName: "Supervisor/a",
       strict: true,
       responsibilities: [
-        "Revisar coherencia global",
-        "Comprobar que se cumplen los requisitos",
-        "Detectar errores o ausencias",
-        "Validar el producto final"
+        "Responsable de revisión e integración final",
+        "Responsable de última tarea asignada"
       ],
       allowedInterventions: [
         "revision_final",
