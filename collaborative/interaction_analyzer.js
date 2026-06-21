@@ -51,8 +51,8 @@ DEFINICIONES:
 - Andamiaje: high (necesita guía fuerte), medium (sugerencias), light (ligero)
 
 EJEMPLOS:
-Input: "Hola, vamos a hacer el proyecto" | "Vale" | "De acuerdo" → {"stage": "inicio", "state": "superficial_consensus", "quality": "many_undecided", "inactive": ["coordinador","secretary","critic"], "scaffold": "medium"}
-Input: "Hemos fait el análisis" | "Bien" | "Ahora hacemos la presentación" | "Ok" → {"stage": "desarrollo", "state": "productive", "quality": "balanced", "inactive": [], "scaffold": "light"}
+Input: "Hola, vamos a hacer el proyecto" | "Vale" | "De acuerdo" → {"conversationStage": "inicio", "groupState": "superficial_consensus", "ideaQuality": "many_undecided", "inactiveRoles": ["coordinator","secretary","critic"], "scaffoldingLevel": "medium"}
+Input: "Hemos hecho el análisis" | "Bien" | "Ahora hacemos la presentación" | "Ok" → {"conversationStage": "desarrollo", "groupState": "productive", "ideaQuality": "balanced", "inactiveRoles": [], "scaffoldingLevel": "light"}
 
 Responde SOLO con JSON válido, sin texto adicional.`;
 

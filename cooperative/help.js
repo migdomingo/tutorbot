@@ -17,6 +17,8 @@ const {
 } = require('../commons/db.js');
 
 const AUTOMATIC_INTERVENTION_COOLDOWN_MINUTES = 10;
+// In simulation mode use a 5-second cooldown so phases don't spam but still show the behavior
+const SIMULATION_COOLDOWN_MINUTES = 5 / 60;
 
 /**
  * Helper: map role id to display name
@@ -150,7 +152,10 @@ async function handleAutomaticMilestoneIntervention(message, roles, openai) {
   const lastIntervention = await getLastAutomaticIntervention(message.channelId);
   if (lastIntervention) {
     const minutesSince = (Date.now() - new Date(lastIntervention.timestamp).getTime()) / 60000;
-    if (minutesSince < AUTOMATIC_INTERVENTION_COOLDOWN_MINUTES) return;
+    const cooldown = process.env.SIMULATION_MODE === 'true'
+      ? SIMULATION_COOLDOWN_MINUTES
+      : AUTOMATIC_INTERVENTION_COOLDOWN_MINUTES;
+    if (minutesSince < cooldown) return;
   }
 
   // Obtener contexto de actividad. Si no existe, no intervenir

@@ -77,7 +77,8 @@ async function analyzeCooperativeContext(message, roles) {
   let recentMessages;
 
   try {
-    recentMessages = await message.channel.messages.fetch({ limit: 30 });
+    const fetchLimit = parseInt(process.env.SIMULATION_FETCH_LIMIT || '30');
+    recentMessages = await message.channel.messages.fetch({ limit: fetchLimit });
     recentMessages = recentMessages.filter(m => !m.author.bot);
     console.log(`[COOP_ANALYZER] Fetched ${recentMessages.size} non-bot messages for analysis`);
   } catch (err) {
@@ -88,7 +89,10 @@ async function analyzeCooperativeContext(message, roles) {
   const messageCount = recentMessages.size;
   console.log(`[COOP_ANALYZER] Message count: ${messageCount}`);
 
-  const phase = determinePhase(messageCount);
+  // Use the full channel history size when available (FakeChannel in simulation)
+  // so that phase determination reflects real progress, not just the fetch window.
+  const totalForPhase = message.channel._history?.length ?? messageCount;
+  const phase = determinePhase(totalForPhase);
   console.log(`[COOP_ANALYZER] Determined phase: ${phase}`);
 
   const roleAnalysis = analyzeRoles(

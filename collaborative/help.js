@@ -5,15 +5,44 @@
  */
 
 const { analyzeChatContext, classifyIntervention } = require('./interaction_analyzer.js');
-const { 
-    getRoles, 
-    insertHelpRequest, 
-    insertBotIntervention, 
-    getRecentSuggestions, 
+const {
+    getRoles,
+    insertHelpRequest,
+    insertBotIntervention,
+    getRecentSuggestions,
     recordSuggestion,
-    getRecentMessagesWithRoleMentions
+    getRecentMessagesWithRoleMentions,
+    getLastBotIntervention,
+    getUsersParticipatedSince,
+    dbAll
 } = require('../commons/db.js');
 const scenarioConfig = require('./scenario_configuration.js');
+
+/**
+ * Check whether all role members have participated since the last bot intervention.
+ * Implements scenarioConfig.interventionPolicy.minMessagesBetweenInterventions.
+ * Returns { allowed: bool, pendingUsers: string[] }
+ */
+async function checkParticipationSinceLastIntervention(channelId) {
+    const last = await getLastBotIntervention(channelId);
+    if (!last) return { allowed: true, pendingUsers: [] };
+
+    const roles = await getRoles(channelId);
+    if (!roles || roles.length === 0) return { allowed: true, pendingUsers: [] };
+
+    const activeSince = await getUsersParticipatedSince(channelId, last.timestamp);
+    const activeIds = new Set(activeSince.map(r => r.user_id));
+
+    // Find role members who have NOT sent any message since then
+    const pendingUsers = roles
+        .filter(r => !activeIds.has(r.user_id))
+        .map(r => r.username);
+
+    return {
+        allowed: pendingUsers.length === 0,
+        pendingUsers
+    };
+}
 
 /**
  * Get varied suggestions for a role, avoiding recent repetitions
@@ -155,16 +184,29 @@ async function handleHelpCommand(message, openai, forceOverride = false) {
     // Verificar si se cumple alguna condición de activación
     if (!activation.activationReason) {
         console.log(`[AYUDA] ACTIVACIÓN RECHAZADA: ${activation.participantsDetected} participantes`);
-        
+
         let rejectionMsg = '⚠️ **Activación pendiente:**\n\n';
         rejectionMsg += 'Para activar el facilitador, se necesita:\n';
         rejectionMsg += '• Al menos 3 participantes en el chat, O\n';
         rejectionMsg += '• Al menos 1 mensaje del Secretario/a Y 1 de otro rol.\n\n';
         rejectionMsg += 'El docente puede forzar intervención con `/forzar_ayuda`.';
-        
+
         return message.reply(rejectionMsg);
     }
     console.log(`[AYUDA] ACTIVACIÓN ACEPTADA: ${activation.activationReason}`);
+
+    // Verificar que todos los miembros han participado desde la última intervención
+    if (!forceOverride) {
+        const participation = await checkParticipationSinceLastIntervention(message.channelId);
+        if (!participation.allowed) {
+            console.log(`[AYUDA] BLOQUEADO por política de participación. Pendientes: ${participation.pendingUsers.join(', ')}`);
+            const names = participation.pendingUsers.join(', ');
+            return message.reply(
+                `⏳ Aún no puedo intervenir: **${names}** no ha/n participado en el chat desde la última vez que ayudé.\n` +
+                `Reflexionad, compartid vuestras ideas, y luego volvéis a pedir ayuda. 💬`
+            );
+        }
+    }
 
     // Análisis y generación de respuesta
     try {
@@ -287,27 +329,28 @@ TU FUNCIÓN:
 ✅ Activas a los roles inactivos dirigiéndote a ellos POR SU NOMBRE DE USUARIO.
 ✅ Adaptas tu feedback al contexto (etapa, estado, calidad de ideas).
 
- ESTILO OBLIGATORIO:
- - Dirígete a los miembros POR SU NOMBRE DE USUARIO, mencionando su rol (ej. "Juan, como Coordinador, ¿cómo...?", "María, como Secretaria, ¿qué estructura...?")
- - Usa PREGUNTAS abiertas, no afirmaciones prescriptivas.
- - Ofrece OPCIONES entre las que elegir (2-3), nunca una única solución.
- - Ejemplo CORRECTO: "María, como Secretaria, ¿qué estructura os parece más útil: lista de criterios, matriz o esquema causa-efecto?"
- - Ejemplo INCORRECTO: "Secretario, usa una matriz de criterios."
- - Si un rol está inactivo, menciónalo POR SU NOMBRE y pregúntale por su función específica.
+ESTILO OBLIGATORIO:
+ - Dirígete a cada alumno/a POR SU NOMBRE, sin mencionar el nombre del rol (no digas "como Coordinador"; simplemente usa el nombre).
+ - Haz UNA sola pregunta corta por alumno/a. Máximo una frase por persona.
+ - Las preguntas deben ser CONCRETAS y fáciles de responder: sobre qué están haciendo ahora, qué no entienden, o cuál sería su próximo paso.
+ - Ejemplo CORRECTO: "Ana, ¿en qué parte del trabajo os habéis quedado atascados?"
+ - Ejemplo CORRECTO: "Pedro, ¿hay algo del enunciado que no os haya quedado claro?"
+ - Ejemplo INCORRECTO: "María, como Secretaria, ¿qué estructura de documentación os parece más adecuada para registrar vuestros avances?"
+ - Si un rol está inactivo, hazle UNA pregunta directa y sencilla por su nombre.
 
- TONO DE COMUNICACIÓN:
- - Usa tuteo (tratamiento "tú", no "usted").
- - Sé cercano, respetuoso y colaborativo.
- - Nunca suenes paternalista ("deberíais...", "tenéis que...") ni evaluador ("bien", "mal", "correcto").
- - Habla como un profesor que acompaña, no como un experto que sabe más.
- - Usa un español de España (es-ES), natural y coloquial pero apropiado para el aula.
+TONO DE COMUNICACIÓN:
+ - Habla como un compañero/a mayor o un profe joven, cercano y directo.
+ - Tuteo siempre. Frases cortas. Sin palabras raras ni tecnicismos.
+ - NUNCA uses palabras como: andamiaje, metacognición, estructura, documentar, estrategia, recurso, objetivo, priorizar.
+ - Nada de frases largas ni acumulación de opciones. Una pregunta simple y directa.
+ - Español de España (es-ES), coloquial de aula y utilizando la segunda persona del plural (vosotros).
 
- 📋 PRINCIPIOS (obedécelos SIEMPRE):
-1. Brevedad: 2-4 líneas máximo. Idioma: español de España (es-ES).
-2. Ofrece ALTERNATIVAS y deja que el equipo elija.
+📋 PRINCIPIOS (obedécelos SIEMPRE):
+1. Una pregunta por alumno/a. Máximo 1 frase por persona.
+2. Preguntas concretas: "¿qué no entendéis?", "¿por dónde empezaríais?", "¿en qué estáis ahora?".
 3. NUNCA des contenido académico, fórmulas, datos concretos o soluciones directas.
-4. La meta es que el equipo APRENDA A REGULARSE, no que dependa de ti.
-5. Pregunta, no digas. Propón opciones, no prescribas.
+4. La meta es que el equipo siga adelante solo, no que dependa de ti.
+5. Pregunta, no expliques.
 
 🔍 CONTEXTO DEL GRUPO (consúltalo para adaptar):
 - Etapa: ${chatContext.conversationStage}
@@ -325,11 +368,22 @@ ${levelInstr}
 💡 MODELOS DE ACCIÓN SUGERIDOS (inspiración para tus preguntas - ADAPTALOS al contexto real):
 ${suggestionsContext}
 
-📝 FORMATO DE RESPUESTA:
-1. Breve reconocimiento del estado (1 línea, ej. "Veo que estáis en etapa de planificación").
-2. 2-3 preguntas dirigidas a roles específicos (usa los nombres de usuario reales).
-3. Si hay roles inactivos, MENCIÓNALOS EXPRESAMENTE por su nombre para activarlos.
-4. NUNCA des pasos concretos o instrucciones de "cómo hacer".`
+📝 FORMATO DE RESPUESTA (sígelo al pie de la letra):
+- Una línea corta de introducción (opcional, máximo 1 frase sencilla).
+- Después, UNA línea por alumno/a, separadas por salto de línea en blanco.
+- Cada línea: "[Nombre], [pregunta directa y corta]?"
+- Ejemplo de formato correcto:
+
+Parece que estáis un poco parados, ¡vamos a desatascarlo!
+
+Ana, ¿en qué parte del trabajo os habéis quedado atascados?
+
+Pedro, ¿hay algo del enunciado que no entendéis del todo?
+
+Lucía, si tuvierais que empezar por algo ahora mismo, ¿qué sería?
+
+- NUNCA pongas todo seguido en un solo párrafo.
+- NUNCA des pasos concretos ni instrucciones de "cómo hacer".`
                 },
                 { role: "user", content: `El equipo ha escrito: "${message.content}"\n\nRoles asignados en este canal: ${rolesList || 'Aún no se han asignado roles con /asignar_roles'}.\n\nUsa los nombres de los miembros cuando te dirijas a ellos. Cuando un rol está inactivo, dirígete a ese miembro por su nombre de usuario.` }
             ]

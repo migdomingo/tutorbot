@@ -197,7 +197,10 @@ const insertSurveyResult = async (channelId, userId, username, q1, q2, q3, comme
 };
 
 const insertParticipationLog = async (channelId, userId, username, mode = 'collaborative') => {
-    await dbRun(`INSERT INTO participation_log (channel_id, user_id, username, mode) VALUES (?, ?, ?, ?)`, [channelId, userId, username, mode]);
+    await dbRun(
+        `INSERT INTO participation_log (channel_id, user_id, username, mode, timestamp) VALUES (?, ?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))`,
+        [channelId, userId, username, mode]
+    );
 };
 
 const insertHelpRequest = async (channelId, userId, participantsBefore, messageCountBefore, activationReason = 'multi_participant_chat', rolesDetected = '[]', mode = 'collaborative') => {
@@ -205,7 +208,10 @@ const insertHelpRequest = async (channelId, userId, participantsBefore, messageC
 };
 
 const insertBotIntervention = async (channelId, interventionType, mode = 'collaborative') => {
-    await dbRun(`INSERT INTO bot_interventions (channel_id, intervention_type, mode) VALUES (?, ?, ?)`, [channelId, interventionType, mode]);
+    await dbRun(
+        `INSERT INTO bot_interventions (channel_id, intervention_type, mode, timestamp) VALUES (?, ?, ?, strftime('%Y-%m-%d %H:%M:%f', 'now'))`,
+        [channelId, interventionType, mode]
+    );
 };
 
 const getRoles = async(channelId) =>  {
@@ -257,6 +263,20 @@ const ensureColumnExists = async (table, column, definition) => {
   }
 };
 
+
+const getLastBotIntervention = async (channelId) => {
+    return await dbGet(
+        `SELECT timestamp FROM bot_interventions WHERE channel_id = ? ORDER BY timestamp DESC LIMIT 1`,
+        [channelId]
+    );
+};
+
+const getUsersParticipatedSince = async (channelId, sinceTimestamp) => {
+    return await dbAll(
+        `SELECT DISTINCT user_id FROM participation_log WHERE channel_id = ? AND timestamp > ?`,
+        [channelId, sinceTimestamp]
+    );
+};
 
 const getLastAutomaticIntervention = async (channelId) => {
     return await dbGet(
@@ -329,6 +349,8 @@ module.exports = {
     dbAll,
     getRecentSuggestions,
     recordSuggestion,
+    getLastBotIntervention,
+    getUsersParticipatedSince,
     getLastAutomaticIntervention,
     getChannelStats,
     insertTeacherAssessment,
